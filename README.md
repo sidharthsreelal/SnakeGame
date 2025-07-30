@@ -4,7 +4,7 @@ This is a classic snake game with several enhancements, created using HTML, CSS,
 
 ## How to Play
 
-1.  **Open the game**: Open the `enhanced-snake.html` file in your web browser.
+1.  **Open the game**
 2.  **Game Menu**: You will be greeted with a game menu where you can configure the game settings.
     *   **Select Level**: Choose from Easy, Medium, Hard, or Expert. The level affects the snake's speed.
     *   **Apples to Next Level**: Set the number of apples to eat to advance to the next level.
