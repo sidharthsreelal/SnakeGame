@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enhanced Snake Game</title>
+<style>
+body{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;margin:0;background-color:#222;font-family:Arial,sans-serif}
+canvas{border:2px solid #fff}
+#game-container{position:relative}
+#score{color:white;font-size:24px;margin-bottom:20px}
+#high-score{color:gold;font-size:20px;margin-bottom:10px}
+#instructions{color:white;text-align:center;margin-top:20px;font-size:16px}
+#game-menu{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background-color:rgba(0,0,0,0.8);padding:30px;border-radius:10px;text-align:center;display:none;width:340px;box-shadow:0 0 20px rgba(0,0,0,0.5)}
+.menu-button{background-color:#4CAF50;border:none;color:white;padding:12px 25px;margin:8px 0;border-radius:5px;cursor:pointer;font-size:16px;width:100%;transition:background-color 0.3s}
+.menu-button:hover{background-color:#45a049}
+#game-menu h2{margin-top:0;margin-bottom:20px;font-size:28px;color:white;text-shadow:0 0 10px rgba(76,175,80,0.5)}
+#game-menu label{color:white;font-size:16px;display:inline-block;width:160px;text-align:right;margin-right:10px}
+#game-menu select,#game-menu input{padding:8px;border-radius:4px;border:1px solid #45a049;background-color:#333;color:white;width:140px}
+.menu-item{margin-bottom:18px;display:flex;align-items:center;justify-content:space-between}
+</style>
+</head>
+<body>
+<div id="high-score">High Score: 0</div>
+<div id="score">Score: 0</div>
+<div id="game-container">
+<canvas id="gameCanvas" width="400" height="400"></canvas>
+<div id="game-menu">
+<h2>Game Menu</h2>
+<div class="menu-item">
+<label>Select Level:</label>
+<select id="levelSelect">
+<option value="1">Level 1 (Easy)</option>
+<option value="3">Level 3 (Medium)</option>
+<option value="5">Level 5 (Hard)</option>
+<option value="7">Level 7 (Expert)</option>
+</select>
+</div>
+<div class="menu-item">
+<label>Apples to Next Level:</label>
+<input type="number" id="applesToNextLevel" value="5" min="1" max="20">
+</div>
+<div class="menu-item">
+<label>Bombs per Level:</label>
+<input type="number" id="bombsPerLevel" value="2" min="0" max="10">
+</div>
+<div class="menu-item">
+<label>Scissors per Level:</label>
+<input type="number" id="scissorsPerLevel" value="1" min="0" max="10">
+</div>
+<button class="menu-button" id="startGame">Start Game</button>
+<button class="menu-button" id="toggleWalls">Toggle Walls</button>
+<button class="menu-button" id="toggleSpeed">Toggle Speed Mode</button>
+</div>
+</div>
+<div id="instructions">Use Arrow Keys to move<br>Press Space to restart after game over<br>Press ESC for menu</div>
+<script>
+const canvas=document.getElementById('gameCanvas');
+const ctx=canvas.getContext('2d');
+const scoreElement=document.getElementById('score');
+const highScoreElement=document.getElementById('high-score');
+const gameMenu=document.getElementById('game-menu');
+const startButton=document.getElementById('startGame');
+const toggleWallsButton=document.getElementById('toggleWalls');
+const toggleSpeedButton=document.getElementById('toggleSpeed');
+const applesToNextLevelInput=document.getElementById('applesToNextLevel');
+const bombsPerLevelInput=document.getElementById('bombsPerLevel');
+const scissorsPerLevelInput=document.getElementById('scissorsPerLevel');
+const gridSize=20;
+const gridWidth=canvas.width/gridSize;
+const gridHeight=canvas.height/gridSize;
+let snake=[{x:10,y:10}];
+let food={x:15,y:15};
+let dx=0;
+let dy=0;
+let score=0;
+let highScore=localStorage.getItem('snakeHighScore')||0;
+let level=1;
+let baseSpeed=150;
+let gameSpeed=baseSpeed;
+let gameLoop;
+let wallsEnabled=true;
+let speedMode=false;
+let bombs=[];
+let scissors=[];
+let applesEaten=0;
+let applesToNextLevel=5;
+const levelSelect=document.getElementById('levelSelect');
+function generateFood(){
+do{
+food={
+x:Math.floor(Math.random()*gridWidth),
+y:Math.floor(Math.random()*gridHeight)
+};
+}while(snake.some(segment=>segment.x===food.x&&segment.y===food.y)||bombs.some(bomb=>bomb.x===food.x&&bomb.y===food.y));
+}
+function generateBomb(){
+let bomb;
+do{
+bomb={
+x:Math.floor(Math.random()*gridWidth),
+y:Math.floor(Math.random()*gridHeight)
+};
+}while(snake.some(segment=>segment.x===bomb.x&&segment.y===bomb.y)||(food.x===bomb.x&&food.y===bomb.y)||scissors.some(scissor=>scissor.x===bomb.x&&scissor.y===bomb.y));
+bombs.push(bomb);
+}
+function generateScissors(){
+let scissor;
+do{
+scissor={
+x:Math.floor(Math.random()*gridWidth),
+y:Math.floor(Math.random()*gridHeight)
+};
+}while(snake.some(segment=>segment.x===scissor.x&&segment.y===scissor.y)||(food.x===scissor.x&&food.y===scissor.y)||bombs.some(bomb=>bomb.x===scissor.x&&bomb.y===scissor.y));
+scissors.push(scissor);
+}
+let frameCounter=0;
+function drawBombs(){
+ctx.font=`${gridSize}px Arial`;
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+bombs.forEach(bomb=>{
+ctx.fillText('💣',bomb.x*gridSize+gridSize/2,bomb.y*gridSize+gridSize/2);
+});
+}
+function drawScissors(){
+ctx.font=`${gridSize}px Arial`;
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+scissors.forEach(scissor=>{
+ctx.fillText('✂️',scissor.x*gridSize+gridSize/2,scissor.y*gridSize+gridSize/2);
+});
+}
+function checkBombCollision(){
+return bombs.some(bomb=>bomb.x===snake[0].x&&bomb.y===snake[0].y);
+}
+function checkScissorsCollision(){
+for(let i=0;i<scissors.length;i++){
+if(scissors[i].x===snake[0].x&&scissors[i].y===snake[0].y){
+if(snake.length>1){
+snake=snake.slice(0,Math.ceil(snake.length/2));
+}
+score-=10;
+scoreElement.textContent=`Score: ${score}`;
+scissors.splice(i,1);
+return true;
+}
+}
+return false;
+}
+function checkCollision(){
+const head=snake[0];
+if(wallsEnabled){
+if(head.x<0||head.x>=gridWidth||head.y<0||head.y>=gridHeight){
+return true;
+}
+}
+return snake.slice(1).some(segment=>segment.x===head.x&&segment.y===head.y);
+}
+function gameOver(){
+if(score>highScore){
+highScore=score;
+localStorage.setItem('snakeHighScore',highScore);
+highScoreElement.textContent=`High Score: ${highScore}`;
+}
+clearInterval(gameLoop);
+gameMenu.style.display='block';
+}
+function update(){
+let newX=snake[0].x+dx;
+let newY=snake[0].y+dy;
+if(!wallsEnabled){
+if(newX<0)newX=gridWidth-1;
+if(newX>=gridWidth)newX=0;
+if(newY<0)newY=gridHeight-1;
+if(newY>=gridHeight)newY=0;
+}
+const head={x:newX,y:newY};
+snake.unshift(head);
+frameCounter++;
+if(head.x===food.x&&head.y===food.y){
+score+=speedMode?20:10;
+applesEaten++;
+scoreElement.textContent=`Score: ${score}`;
+generateFood();
+if(!speedMode){
+if(applesEaten>=applesToNextLevel){
+level++;
+applesEaten=0;
+gameSpeed=Math.max(50,baseSpeed-(level-1)*10);
+clearInterval(gameLoop);
+gameLoop=setInterval(update,gameSpeed);
+if(level>=3){
+const bombsToAdd=parseInt(bombsPerLevelInput.value);
+for(let i=0;i<bombsToAdd;i++){
+generateBomb();
+}
+}
+if(level>=2){
+const scissorsToAdd=parseInt(scissorsPerLevelInput.value);
+for(let i=0;i<scissorsToAdd;i++){
+generateScissors();
+}
+}
+}
+}
+}else{
+snake.pop();
+}
+if(checkCollision()||checkBombCollision()){
+gameOver();
+return;
+}
+checkScissorsCollision();
+ctx.fillStyle='#222';
+ctx.fillRect(0,0,canvas.width,canvas.height);
+ctx.fillStyle='white';
+ctx.font='16px Arial';
+ctx.fillText(`Level: ${level}`,10,20);
+ctx.fillText(`Speed: ${Math.floor((baseSpeed-gameSpeed)/10)}`,canvas.width-100,20);
+ctx.fillStyle='#ff0000';
+ctx.beginPath();
+ctx.arc(food.x*gridSize+gridSize/2,food.y*gridSize+gridSize/2,gridSize/2-2,0,Math.PI*2);
+ctx.fill();
+drawBombs();
+drawScissors();
+ctx.beginPath();
+snake.forEach((segment,index)=>{
+if(index===0){
+ctx.moveTo(segment.x*gridSize+gridSize/2,segment.y*gridSize+gridSize/2);
+}else{
+ctx.lineTo(segment.x*gridSize+gridSize/2,segment.y*gridSize+gridSize/2);
+}
+});
+ctx.strokeStyle='#4CAF50';
+ctx.lineWidth=gridSize-2;
+ctx.lineCap='round';
+ctx.lineJoin='round';
+ctx.stroke();
+ctx.fillStyle='#45a049';
+ctx.beginPath();
+ctx.arc(snake[0].x*gridSize+gridSize/2,snake[0].y*gridSize+gridSize/2,(gridSize-2)/2,0,Math.PI*2);
+ctx.fill();
+}
+function handleKeyPress(e){
+if(e.key==='Escape'){
+if(gameLoop){
+clearInterval(gameLoop);
+gameLoop=null;
+}
+gameMenu.style.display='block';
+return;
+}
+if(e.key===' '&&!gameLoop){
+startGame();
+return;
+}
+if(!gameLoop)return;
+switch(e.key){
+case 'ArrowUp':
+if(dy!==1){dx=0;dy=-1;}
+break;
+case 'ArrowDown':
+if(dy!==-1){dx=0;dy=1;}
+break;
+case 'ArrowLeft':
+if(dx!==1){dx=-1;dy=0;}
+break;
+case 'ArrowRight':
+if(dx!==-1){dx=1;dy=0;}
+break;
+}
+}
+function startGame(){
+snake=[{x:10,y:10}];
+dx=0;
+dy=0;
+score=0;
+applesEaten=0;
+applesToNextLevel=parseInt(applesToNextLevelInput.value);
+if(!level)level=parseInt(levelSelect.value);
+gameSpeed=speedMode?50:Math.max(50,baseSpeed-(level-1)*10);
+bombs=[];
+scissors=[];
+scoreElement.textContent='Score: 0';
+generateFood();
+if(level>=3){
+const bombsPerLevel=parseInt(bombsPerLevelInput.value);
+const bombCount=(level-2)*bombsPerLevel;
+for(let i=0;i<bombCount;i++){
+generateBomb();
+}
+}
+if(level>=2){
+const scissorsPerLevel=parseInt(scissorsPerLevelInput.value);
+const scissorsCount=(level-1)*scissorsPerLevel;
+for(let i=0;i<scissorsCount;i++){
+generateScissors();
+}
+}
+if(gameLoop)clearInterval(gameLoop);
+gameLoop=setInterval(update,gameSpeed);
+gameMenu.style.display='none';
+}
+document.addEventListener('keydown',handleKeyPress);
+startButton.addEventListener('click',()=>{
+level=parseInt(levelSelect.value);
+gameSpeed=Math.max(50,baseSpeed-(level-1)*10);
+startGame();
+});
+toggleWallsButton.addEventListener('click',()=>{
+wallsEnabled=!wallsEnabled;
+toggleWallsButton.textContent=`Toggle Walls (${wallsEnabled?'On':'Off'})`;
+});
+toggleSpeedButton.addEventListener('click',()=>{
+speedMode=!speedMode;
+toggleSpeedButton.textContent=`Speed Mode (${speedMode?'On':'Off'})`;
+if(gameLoop){
+clearInterval(gameLoop);
+gameLoop=setInterval(update,speedMode?50:gameSpeed);
+}
+});
+highScoreElement.textContent=`High Score: ${highScore}`;
+gameMenu.style.display='block';
+</script>
+</body>
+</html>
